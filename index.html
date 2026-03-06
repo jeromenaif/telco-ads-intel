@@ -4,12 +4,10 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>🇧🇪 Belgian Telco · Meta Ads Intelligence</title>
-<meta name="description" content="Belgian telco competitive intelligence — Meta Ads Library"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0A0D14; font-family: 'IBM Plex Mono', 'Courier New', monospace; color: #E0E6F0; min-height: 100vh; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #0A0D14; }
 ::-webkit-scrollbar-thumb { background: #2A3050; border-radius: 3px; }
@@ -20,256 +18,148 @@ a { color: #22D3EE; }
 .btn { border: none; border-radius: 8px; padding: 8px 14px; font-size: 11px; font-family: inherit; font-weight: 600; cursor: pointer; transition: all .2s; }
 .tag { display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
 .grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-.flex { display: flex; }
-.flex-col { display: flex; flex-direction: column; }
-.gap-4 { gap: 4px; } .gap-8 { gap: 8px; } .gap-10 { gap: 10px; } .gap-12 { gap: 12px; } .gap-14 { gap: 14px; } .gap-16 { gap: 16px; } .gap-18 { gap: 18px; }
-.wrap { flex-wrap: wrap; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(34,211,238,0.3); border-top-color: #22D3EE; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px; }
 </style>
 </head>
 <body>
-
-<div id="app"></div>
-
+<div id="app">
+  <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px">
+    <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+    <div style="color:#22D3EE;font-size:13px;letter-spacing:2px">LOADING ADS DATA…</div>
+  </div>
+</div>
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const BRANDS = {
   major: [
-    { id:"proximus", name:"Proximus",       color:"#7B2D8B", logo:"P",  pageId:"396653700450194" },
-    { id:"orange",   name:"Orange",         color:"#FF6600", logo:"O",  pageId:"688456044627534" },
-    { id:"telenet",  name:"Telenet",        color:"#E30613", logo:"T",  pageId:"21708711283" },
+    { id:"proximus", name:"Proximus",       color:"#7B2D8B", logo:"P"  },
+    { id:"orange",   name:"Orange",         color:"#FF6600", logo:"O"  },
+    { id:"telenet",  name:"Telenet",        color:"#E30613", logo:"T"  },
   ],
   bbrands: [
-    { id:"hey",      name:"Hey!",           color:"#00C896", logo:"H",  pageId:"106035051747489" },
-    { id:"digi",     name:"Digi",           color:"#FFDD00", logo:"D",  pageId:"146130408575824" },
-    { id:"scarlet",  name:"Scarlet",        color:"#CC0000", logo:"S",  pageId:"23927224422" },
-    { id:"mvikings", name:"Mobile Vikings", color:"#1DA1F2", logo:"MV", pageId:"126215907404355" },
+    { id:"hey",      name:"Hey!",           color:"#00C896", logo:"H"  },
+    { id:"digi",     name:"Digi",           color:"#FFDD00", logo:"D"  },
+    { id:"scarlet",  name:"Scarlet",        color:"#CC0000", logo:"S"  },
+    { id:"mvikings", name:"Mobile Vikings", color:"#1DA1F2", logo:"MV" },
   ],
 };
 const ALL_BRANDS     = [...BRANDS.major, ...BRANDS.bbrands];
 const MONTHS         = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const YEARS          = [2023, 2024, 2025, 2026];
-const MONTH_FULL     = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const CAMPAIGN_TYPES = ["Brand","Product","Promo"];
 const TYPE_COLORS    = { Brand:"#A78BFA", Product:"#34D399", Promo:"#F87171" };
 const META_VERSION   = "v20.0";
-const AD_FIELDS      = ["id","ad_creation_time","ad_delivery_start_time","ad_delivery_stop_time","ad_creative_bodies","ad_creative_link_titles","ad_creative_link_descriptions","spend","impressions","eu_total_reach","target_ages","target_gender","publisher_platforms","languages","ad_snapshot_url","page_name","beneficiary_payers"].join(",");
 
-// ── CHART.JS DEFAULTS ─────────────────────────────────────────────────────────
 Chart.defaults.color = "#666";
-Chart.defaults.font.family = "'IBM Plex Mono', 'Courier New', monospace";
+Chart.defaults.font.family = "'IBM Plex Mono','Courier New',monospace";
 Chart.defaults.font.size = 11;
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let state = {
-  dataLoading: true, dataError: null, fetchedAt: null,
-  liveAds: null, selBrands: ALL_BRANDS.map(b=>b.id),
-  selTypes: [...CAMPAIGN_TYPES],
-  selPeriods: MONTHS.map((_,i)=>`2024-${String(i+1).padStart(2,"0")}`),
+  ads: [], fetchedAt: null, dataError: null,
+  selBrands: ALL_BRANDS.map(b => b.id),
+  selTypes:  [...CAMPAIGN_TYPES],
+  selPeriods: [],
   tab: "overview", group: "all", search: "",
 };
 let charts = {};
 
 function setState(patch) {
-  state = {...state, ...patch};
+  state = { ...state, ...patch };
   render();
 }
 
-// ── CLASSIFIER ────────────────────────────────────────────────────────────────
-const RE_PROMO   = /promo|offer|deal|discount|save|free|gratuit|solde|r[eé]duction|korting|gratis|%|actie|bon plan|special|limited|tijdelijk|\d+€|cashback/i;
-const RE_PRODUCT = /5g|fiber|fibre|\bgb\b|mbps|gbps|\btv\b|internet|bbox|play|plan|pack|abon|subscription|abonnement|forfait|unlimited|illimit[eé]|onbeperkt|speed|data|\bsim\b|esim|\b4g\b|smart|flex|boost|premium/i;
-function classify(body="", title="") {
-  const t = `${body} ${title}`;
-  if (RE_PROMO.test(t))   return "Promo";
-  if (RE_PRODUCT.test(t)) return "Product";
-  return "Brand";
-}
-
-// ── NORMALIZER ────────────────────────────────────────────────────────────────
-function norm(raw, brand) {
-  const body    = (raw.ad_creative_bodies||[])[0] || (raw.ad_creative_link_titles||[])[0] || "";
-  const title   = (raw.ad_creative_link_titles||[])[0] || "";
-  const dateStr = raw.ad_delivery_start_time || raw.ad_creation_time || "";
-  const date    = dateStr ? new Date(dateStr) : new Date();
-  const stop    = raw.ad_delivery_stop_time;
-  return {
-    id: String(raw.id), brand: brand.id, brandName: brand.name, brandColor: brand.color,
-    month: date.getMonth(), monthLabel: MONTHS[date.getMonth()], year: date.getFullYear(),
-    type: classify(body, title),
-    title: (body || title).slice(0,200) || "(no copy)",
-    spend_lower: parseInt(raw.spend?.lower_bound||"0"),
-    spend_upper: parseInt(raw.spend?.upper_bound||"0"),
-    impressions_lower: parseInt(raw.impressions?.lower_bound||"0"),
-    impressions_upper: parseInt(raw.impressions?.upper_bound||"0"),
-    eu_total_reach: raw.eu_total_reach || 0,
-    platforms: raw.publisher_platforms || [],
-    targeting: { age:(raw.target_ages||["18-65+"]).join(", "), gender:raw.target_gender||"All", interests:(raw.beneficiary_payers||[]).map(b=>b.name).filter(Boolean).slice(0,3) },
-    languages: raw.languages || [],
-    status: (!stop || new Date(stop)>new Date()) ? "ACTIVE":"INACTIVE",
-    start_date: dateStr.slice(0,10),
-    snapshot_url: raw.ad_snapshot_url || null, source: "live",
-  };
-}
-
-// ── MOCK DATA ─────────────────────────────────────────────────────────────────
-function genMock() {
-  const copy = {
-    Brand:   ["Together, further. Proximus connects Belgium.","Orange — the future is bright.","Telenet. Powered by creativity.","Hey! — Keep it simple.","Digi — More for less.","Scarlet — Budget-smart telecom.","Mobile Vikings — Vikings for life."],
-    Product: ["Discover our new 5G unlimited plan","Fiber internet up to 1 Gbps","New MyPlan Flex — customize your subscription","Hey! Box — TV the simple way","Digi 5G — blazing fast","Scarlet Triple Play — TV, Internet & Phone","Mobile Vikings Data Boost — 50GB extra"],
-    Promo:   ["🔥 3 months free on any pack","Switch now: €50 welcome bonus","Black Friday: 40% off","Summer deal: unlimited calls","Student rates — save up to 30%","Soldes d'été — -30%","Happy Hours: double data every weekend"],
-  };
-  const tgts=[{age:"18-24",gender:"All",interests:["Gaming","Music"]},{age:"25-34",gender:"All",interests:["Tech","Finance"]},{age:"35-44",gender:"All",interests:["Family","Home"]},{age:"45-54",gender:"All",interests:["News","Health"]},{age:"18-65+",gender:"All",interests:["General"]}];
-  const plats=[["facebook"],["instagram"],["facebook","instagram"],["facebook","instagram","messenger"]];
-  const ads=[]; let id=1000;
-  ALL_BRANDS.forEach(b => MONTHS.forEach((_,mIdx) => {
-    const n=Math.floor(Math.random()*8)+2;
-    for(let i=0;i<n;i++){
-      const type=CAMPAIGN_TYPES[Math.floor(Math.random()*3)];
-      const sL=type==="Promo"?5000:type==="Product"?2000:1000, sH=sL*(Math.random()*4+1);
-      ads.push({id:`${id++}`,brand:b.id,brandName:b.name,brandColor:b.color,month:mIdx,monthLabel:MONTHS[mIdx],year:2024,type,
-        title:copy[type][Math.floor(Math.random()*copy[type].length)],
-        spend_lower:Math.round(sL),spend_upper:Math.round(sH),
-        impressions_lower:Math.round(sL*80),impressions_upper:Math.round(sH*120),
-        eu_total_reach:Math.round(sL*200),
-        platforms:plats[Math.floor(Math.random()*4)],
-        targeting:tgts[Math.floor(Math.random()*5)],
-        languages:["FR","NL",...(Math.random()>.6?["DE"]:[])],
-        status:Math.random()>.3?"ACTIVE":"INACTIVE",
-        start_date:`2024-${String(mIdx+1).padStart(2,"0")}-01`,
-        snapshot_url:null,source:"mock"});
-    }
-  }));
-  return ads;
-}
-const MOCK = genMock();
-
 // ── UTILS ─────────────────────────────────────────────────────────────────────
-const fmtN = n => n>=1e6?`${(n/1e6).toFixed(1)}M`:n>=1000?`${(n/1000).toFixed(0)}K`:`${n}`;
+const fmtN = n => n >= 1e6 ? `${(n/1e6).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(0)}K` : `${n}`;
 const fmtE = n => `€${fmtN(n)}`;
-const hex2rgba = (hex, a) => { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return `rgba(${r},${g},${b},${a})`; };
+const hex2rgba = (hex, a) => {
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+};
 
 function exportCSV(ads) {
-  const q=s=>`"${String(s??"").replace(/"/g,'""')}"`;
-  const h=["ID","Brand","Month","Year","Type","Status","Copy","Spend Min","Spend Max","Impr Min","Impr Max","EU Reach","Platforms","Age","Gender","Languages","Start Date","Snapshot"].map(q).join(",");
-  const rows=ads.map(a=>[a.id,a.brandName,a.monthLabel,a.year,a.type,a.status,a.title,a.spend_lower,a.spend_upper,a.impressions_lower,a.impressions_upper,a.eu_total_reach,a.platforms.join("|"),a.targeting.age,a.targeting.gender,a.languages.join("|"),a.start_date,a.snapshot_url||""].map(q).join(","));
-  const blob=new Blob([[h,...rows].join("\n")],{type:"text/csv"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");a.href=url;a.download="telco_meta_ads_BE.csv";a.click();URL.revokeObjectURL(url);
+  const q = s => `"${String(s ?? "").replace(/"/g,'""')}"`;
+  const h = ["ID","Brand","Month","Year","Type","Status","Copy","Spend Min","Spend Max","Impr Min","Impr Max","EU Reach","Platforms","Age","Gender","Languages","Start Date","Snapshot"].map(q).join(",");
+  const rows = ads.map(a => [a.id,a.brandName,a.monthLabel,a.year,a.type,a.status,a.title,a.spend_lower,a.spend_upper,a.impressions_lower,a.impressions_upper,a.eu_total_reach,a.platforms.join("|"),a.targeting.age,a.targeting.gender,a.languages.join("|"),a.start_date,a.snapshot_url||""].map(q).join(","));
+  const blob = new Blob([[h,...rows].join("\n")], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download="telco_meta_ads_BE.csv"; a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ── COMPUTED ──────────────────────────────────────────────────────────────────
 function getFiltered() {
-  const { liveAds, selBrands, selTypes, selPeriods, group, search } = state;
-  const base = liveAds || MOCK;
-  const ids = group==="major" ? BRANDS.major.map(b=>b.id) : group==="bbrands" ? BRANDS.bbrands.map(b=>b.id) : ALL_BRANDS.map(b=>b.id);
+  const { ads, selBrands, selTypes, selPeriods, group, search } = state;
+  const ids = group === "major" ? BRANDS.major.map(b=>b.id) : group === "bbrands" ? BRANDS.bbrands.map(b=>b.id) : ALL_BRANDS.map(b=>b.id);
   const actBrands = ids.filter(id => selBrands.includes(id));
-  return {
-    actBrands,
-    filtered: base.filter(a => {
-      const period = `${a.year}-${String(a.month+1).padStart(2,"0")}`;
-      return actBrands.includes(a.brand) && selTypes.includes(a.type) && selPeriods.includes(period) &&
-        (!search || a.title.toLowerCase().includes(search.toLowerCase()) || a.brandName.toLowerCase().includes(search.toLowerCase()));
-    })
-  };
+  const filtered = ads.filter(a => {
+    const period = `${a.year}-${String(a.month+1).padStart(2,"0")}`;
+    return actBrands.includes(a.brand)
+      && selTypes.includes(a.type)
+      && selPeriods.includes(period)
+      && (!search || a.title.toLowerCase().includes(search.toLowerCase()) || a.brandName.toLowerCase().includes(search.toLowerCase()));
+  });
+  return { actBrands, filtered };
 }
 
-// ── CHART HELPERS ─────────────────────────────────────────────────────────────
+// ── CHARTS ────────────────────────────────────────────────────────────────────
 function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
-function makeMonthlyBarChart(canvasId, filtered) {
-  destroyChart(canvasId);
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const periods = state.selPeriods.slice().sort();
-  const labels = periods.map(p => { const [y,m]=p.split("-"); return `${MONTHS[parseInt(m)-1]} ${y.slice(2)}`; });
-  const datasets = CAMPAIGN_TYPES.map(t => ({
-    label: t, backgroundColor: hex2rgba(TYPE_COLORS[t], 0.85),
-    data: periods.map(p => { const [y,m]=p.split("-"); return filtered.filter(a => a.year===parseInt(y) && a.month===parseInt(m)-1 && a.type===t).length; }),
-    borderRadius: t==="Promo" ? 4 : 0, stack: "s",
-  }));
-  charts[canvasId] = new Chart(canvas, {
-    type: "bar",
-    data: { labels, datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color:"#aaa", font:{size:11} } }, tooltip: { backgroundColor:"#1A1F2E", borderColor:"rgba(255,255,255,0.1)", borderWidth:1 } },
-      scales: {
-        x: { stacked:true, grid:{color:"rgba(255,255,255,0.04)"}, ticks:{color:"#666"} },
-        y: { stacked:true, grid:{color:"rgba(255,255,255,0.04)"}, ticks:{color:"#555"} },
-      },
-    }
-  });
-}
-
-function makeLineChart(canvasId, filtered, actBrands) {
-  destroyChart(canvasId);
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const periods = state.selPeriods.slice().sort();
-  const labels = periods.map(p => { const [y,m]=p.split("-"); return `${MONTHS[parseInt(m)-1]} ${y.slice(2)}`; });
-  const datasets = ALL_BRANDS.filter(b => actBrands.includes(b.id)).map(b => ({
-    label: b.name, borderColor: b.color, backgroundColor: hex2rgba(b.color, 0.1),
-    pointBackgroundColor: b.color, borderWidth: 2, pointRadius: 3, tension: 0.3,
-    data: periods.map(p => { const [y,m]=p.split("-"); return filtered.filter(a => a.brand===b.id && a.year===parseInt(y) && a.month===parseInt(m)-1).length; }),
-  }));
-  charts[canvasId] = new Chart(canvas, {
-    type: "line", data: { labels, datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color:"#aaa", font:{size:11} } }, tooltip: { backgroundColor:"#1A1F2E", borderColor:"rgba(255,255,255,0.1)", borderWidth:1 } },
-      scales: {
-        x: { grid:{color:"rgba(255,255,255,0.04)"}, ticks:{color:"#666"} },
-        y: { grid:{color:"rgba(255,255,255,0.04)"}, ticks:{color:"#555"} },
-      },
-    }
-  });
-}
-
-function makePieChart(canvasId, filtered) {
-  destroyChart(canvasId);
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const data = CAMPAIGN_TYPES.map(t => filtered.filter(a=>a.type===t).length);
-  charts[canvasId] = new Chart(canvas, {
+function makePieChart(id, filtered) {
+  destroyChart(id);
+  const canvas = document.getElementById(id); if (!canvas) return;
+  charts[id] = new Chart(canvas, {
     type: "doughnut",
-    data: { labels: CAMPAIGN_TYPES, datasets:[{ data, backgroundColor: CAMPAIGN_TYPES.map(t=>TYPE_COLORS[t]), borderWidth:0, hoverOffset:6 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false, cutout: "65%",
-      plugins: { legend: { labels: { color:"#aaa", font:{size:11} } }, tooltip: { backgroundColor:"#1A1F2E", borderColor:"rgba(255,255,255,0.1)", borderWidth:1 } },
-    }
+    data: { labels: CAMPAIGN_TYPES, datasets:[{ data: CAMPAIGN_TYPES.map(t=>filtered.filter(a=>a.type===t).length), backgroundColor: CAMPAIGN_TYPES.map(t=>TYPE_COLORS[t]), borderWidth:0, hoverOffset:6 }] },
+    options: { responsive:true, maintainAspectRatio:false, cutout:"65%", plugins:{ legend:{labels:{color:"#aaa",font:{size:11}}}, tooltip:{backgroundColor:"#1A1F2E",borderColor:"rgba(255,255,255,0.1)",borderWidth:1} } }
   });
 }
 
-function makeAgeChart(canvasId, filtered) {
-  destroyChart(canvasId);
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const m={};
-  filtered.forEach(a=>{m[a.targeting.age]=(m[a.targeting.age]||0)+1;});
-  const sorted = Object.entries(m).sort((a,b)=>b[1]-a[1]);
-  charts[canvasId] = new Chart(canvas, {
+function makeMonthlyBarChart(id, filtered) {
+  destroyChart(id);
+  const canvas = document.getElementById(id); if (!canvas) return;
+  const periods = state.selPeriods.slice().sort();
+  const labels  = periods.map(p => { const [y,m]=p.split("-"); return `${MONTHS[parseInt(m)-1]} ${y.slice(2)}`; });
+  charts[id] = new Chart(canvas, {
     type: "bar",
-    data: { labels: sorted.map(([age])=>age), datasets:[{ label:"Ads", data:sorted.map(([,c])=>c), backgroundColor: hex2rgba("#A78BFA",0.8), borderRadius:4 }] },
-    options: {
-      indexAxis: "y", responsive:true, maintainAspectRatio:false,
-      plugins: { legend:{display:false}, tooltip:{ backgroundColor:"#1A1F2E", borderColor:"rgba(255,255,255,0.1)", borderWidth:1 } },
-      scales: {
-        x: { grid:{color:"rgba(255,255,255,0.04)"}, ticks:{color:"#555"} },
-        y: { grid:{display:false}, ticks:{color:"#bbb"} },
-      },
-    }
+    data: { labels, datasets: CAMPAIGN_TYPES.map(t => ({ label:t, backgroundColor:hex2rgba(TYPE_COLORS[t],0.85), data:periods.map(p=>{ const [y,m]=p.split("-"); return filtered.filter(a=>a.year===parseInt(y)&&a.month===parseInt(m)-1&&a.type===t).length; }), borderRadius:t==="Promo"?4:0, stack:"s" })) },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:"#aaa",font:{size:11}}},tooltip:{backgroundColor:"#1A1F2E",borderColor:"rgba(255,255,255,0.1)",borderWidth:1}}, scales:{ x:{stacked:true,grid:{color:"rgba(255,255,255,0.04)"},ticks:{color:"#666"}}, y:{stacked:true,grid:{color:"rgba(255,255,255,0.04)"},ticks:{color:"#555"}} } }
   });
 }
 
-// ── HTML BUILDERS ─────────────────────────────────────────────────────────────
+function makeLineChart(id, filtered, actBrands) {
+  destroyChart(id);
+  const canvas = document.getElementById(id); if (!canvas) return;
+  const periods = state.selPeriods.slice().sort();
+  const labels  = periods.map(p => { const [y,m]=p.split("-"); return `${MONTHS[parseInt(m)-1]} ${y.slice(2)}`; });
+  charts[id] = new Chart(canvas, {
+    type: "line",
+    data: { labels, datasets: ALL_BRANDS.filter(b=>actBrands.includes(b.id)).map(b=>({ label:b.name, borderColor:b.color, backgroundColor:hex2rgba(b.color,0.1), pointBackgroundColor:b.color, borderWidth:2, pointRadius:3, tension:0.3, data:periods.map(p=>{ const [y,m]=p.split("-"); return filtered.filter(a=>a.brand===b.id&&a.year===parseInt(y)&&a.month===parseInt(m)-1).length; }) })) },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:"#aaa",font:{size:11}}},tooltip:{backgroundColor:"#1A1F2E",borderColor:"rgba(255,255,255,0.1)",borderWidth:1}}, scales:{ x:{grid:{color:"rgba(255,255,255,0.04)"},ticks:{color:"#666"}}, y:{grid:{color:"rgba(255,255,255,0.04)"},ticks:{color:"#555"}} } }
+  });
+}
+
+function makeAgeChart(id, filtered) {
+  destroyChart(id);
+  const canvas = document.getElementById(id); if (!canvas) return;
+  const m = {};
+  filtered.forEach(a => { m[a.targeting.age] = (m[a.targeting.age]||0)+1; });
+  const sorted = Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  charts[id] = new Chart(canvas, {
+    type: "bar",
+    data: { labels:sorted.map(([age])=>age), datasets:[{label:"Ads",data:sorted.map(([,c])=>c),backgroundColor:hex2rgba("#A78BFA",0.8),borderRadius:4}] },
+    options: { indexAxis:"y", responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false},tooltip:{backgroundColor:"#1A1F2E",borderColor:"rgba(255,255,255,0.1)",borderWidth:1}}, scales:{ x:{grid:{color:"rgba(255,255,255,0.04)"},ticks:{color:"#555"}}, y:{grid:{display:false},ticks:{color:"#bbb"}} } }
+  });
+}
+
+// ── HTML HELPERS ──────────────────────────────────────────────────────────────
 function pill(brand, active) {
-  return `<button class="brand-pill" data-id="${brand.id}" style="background:${active?brand.color:"rgba(255,255,255,0.05)"};border:1.5px solid ${active?brand.color:"rgba(255,255,255,0.1)"};color:${active?"#fff":"#999"};border-radius:99px;padding:4px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;">
-    <span style="width:18px;height:18px;border-radius:50%;background:${active?"rgba(255,255,255,0.25)":brand.color};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff">${brand.logo}</span>
-    ${brand.name}
-  </button>`;
+  return `<button class="brand-pill" data-id="${brand.id}" style="background:${active?brand.color:"rgba(255,255,255,0.05)"};border:1.5px solid ${active?brand.color:"rgba(255,255,255,0.1)"};color:${active?"#fff":"#999"};border-radius:99px;padding:4px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit">
+    <span style="width:18px;height:18px;border-radius:50%;background:${active?"rgba(255,255,255,0.25)":brand.color};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff">${brand.logo}</span>${brand.name}</button>`;
 }
 
 function statCard(label, value, sub, color) {
@@ -286,11 +176,10 @@ function adCard(ad) {
       <div style="display:flex;gap:5px">
         <span class="tag" style="background:${TYPE_COLORS[ad.type]}22;color:${TYPE_COLORS[ad.type]};border:1px solid ${TYPE_COLORS[ad.type]}44">${ad.type.toUpperCase()}</span>
         <span class="tag" style="background:${ad.status==="ACTIVE"?"#34D39922":"#44444422"};color:${ad.status==="ACTIVE"?"#34D399":"#777"}">${ad.status}</span>
-        ${ad.source==="live"?`<span class="tag" style="background:#22D3EE22;color:#22D3EE">LIVE</span>`:""}
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <span style="font-size:10px;color:#555">${ad.brandName}</span>
-        ${ad.snapshot_url?`<a href="${ad.snapshot_url}" target="_blank" style="font-size:10px">👁 View</a>`:""}
+        ${ad.snapshot_url?`<a href="${ad.snapshot_url}" target="_blank" rel="noopener" style="font-size:10px">👁 View</a>`:""}
       </div>
     </div>
     <div style="font-size:12px;color:#ddd;line-height:1.5">"${ad.title.replace(/"/g,"&quot;")}"</div>
@@ -299,38 +188,59 @@ function adCard(ad) {
       <div>${ad.languages.map(l=>`<span style="font-size:8px;background:#ffffff0f;padding:1px 5px;border-radius:3px;color:#888;margin-left:2px">${l}</span>`).join("")}</div>
     </div>
     ${ad.eu_total_reach>0?`<div style="font-size:10px;color:#444">🇪🇺 ${fmtN(ad.eu_total_reach)} DSA reach</div>`:""}
-    <div style="font-size:10px;color:#444;border-top:1px solid rgba(255,255,255,0.05);padding-top:7px">
-      🎯 ${ad.targeting.age} · ${ad.targeting.gender} | 📱 ${ad.platforms.join(", ")||"—"} | 📅 ${ad.start_date}
-    </div>
+    <div style="font-size:10px;color:#444;border-top:1px solid rgba(255,255,255,0.05);padding-top:7px">🎯 ${ad.targeting.age} · ${ad.targeting.gender} | 📱 ${ad.platforms.join(", ")||"—"} | 📅 ${ad.start_date}</div>
   </div>`;
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
 function render() {
-  const { selBrands, selTypes, selPeriods, tab, group, search, liveAds, dataLoading, dataError, fetchedAt } = state;
-  const isLive = !!liveAds;
+  const { ads, fetchedAt, dataError, selBrands, selTypes, selPeriods, tab, group, search } = state;
   const { actBrands, filtered } = getFiltered();
 
-  const totSpend  = filtered.reduce((s,a)=>s+a.spend_lower,0);
-  const totImpr   = filtered.reduce((s,a)=>s+a.impressions_lower,0);
-  const totReach  = filtered.reduce((s,a)=>s+a.eu_total_reach,0);
+  // Error screen
+  if (dataError) {
+    document.getElementById("app").innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;padding:40px;text-align:center">
+        <div style="font-size:32px">⚠️</div>
+        <div style="color:#F87171;font-size:13px">Could not load data.json</div>
+        <div style="color:#444;font-size:11px;max-width:400px">${dataError}</div>
+        <div style="color:#333;font-size:11px;max-width:400px;margin-top:8px">Make sure the GitHub Action has run at least once to generate data.json</div>
+      </div>`;
+    return;
+  }
+
+  // No data yet
+  if (!ads.length) {
+    document.getElementById("app").innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px">
+        <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+        <div style="color:#22D3EE;font-size:13px;letter-spacing:2px">LOADING ADS DATA…</div>
+      </div>`;
+    return;
+  }
+
+  const totSpend  = filtered.reduce((s,a)=>s+a.spend_lower, 0);
+  const totImpr   = filtered.reduce((s,a)=>s+a.impressions_lower, 0);
+  const totReach  = filtered.reduce((s,a)=>s+a.eu_total_reach, 0);
   const activeN   = filtered.filter(a=>a.status==="ACTIVE").length;
 
   const brandData = ALL_BRANDS.filter(b=>actBrands.includes(b.id)).map(b=>{
-    const ba=filtered.filter(a=>a.brand===b.id);
-    return{...b,total:ba.length,Brand:ba.filter(a=>a.type==="Brand").length,Product:ba.filter(a=>a.type==="Product").length,Promo:ba.filter(a=>a.type==="Promo").length,spend:ba.reduce((s,a)=>s+a.spend_lower,0),reach:ba.reduce((s,a)=>s+a.eu_total_reach,0)};
+    const ba = filtered.filter(a=>a.brand===b.id);
+    return { ...b, total:ba.length, Brand:ba.filter(a=>a.type==="Brand").length, Product:ba.filter(a=>a.type==="Product").length, Promo:ba.filter(a=>a.type==="Promo").length, spend:ba.reduce((s,a)=>s+a.spend_lower,0), reach:ba.reduce((s,a)=>s+a.eu_total_reach,0) };
   }).sort((a,b)=>b.total-a.total);
 
-  const platMap={};
+  const platMap = {};
   filtered.forEach(a=>a.platforms.forEach(p=>{platMap[p]=(platMap[p]||0)+1;}));
-  const platData=Object.entries(platMap).sort((a,b)=>b[1]-a[1]);
+  const platData = Object.entries(platMap).sort((a,b)=>b[1]-a[1]);
 
-  const intMap={};
+  const intMap = {};
   filtered.forEach(a=>a.targeting.interests?.forEach(i=>{intMap[i]=(intMap[i]||0)+1;}));
-  const intData=Object.entries(intMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  const maxInt=intData[0]?.[1]||1;
+  const intData = Object.entries(intMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxInt  = intData[0]?.[1]||1;
 
   const TABS = ["overview","timeline","brands","targeting","ads"];
+  const isLive = ads.some(a=>a.source==="live");
+  const lastUpdated = fetchedAt ? new Date(fetchedAt).toLocaleString("fr-BE",{dateStyle:"medium",timeStyle:"short"}) : "";
 
   const html = `
   <!-- HEADER -->
@@ -343,34 +253,8 @@ function render() {
       <h1 style="margin:4px 0 0;font-size:20px;font-weight:800">🇧🇪 Belgian Telco · Meta Ads Library</h1>
       <div style="font-size:11px;color:#444;margin-top:2px">${filtered.length} ads · ${actBrands.length} brands · Belgium · ${selPeriods.length} periods selected</div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px">
-      ${fetchedAt?`<div style="text-align:right"><div style="font-size:9px;color:#2A3050;text-transform:uppercase;letter-spacing:1px">Last updated</div><div style="font-size:11px;color:#3A4560">${new Date(fetchedAt).toLocaleString("en-BE",{dateStyle:"medium",timeStyle:"short"})}</div></div>`:""}
-      ${dataLoading?`<div style="font-size:11px;color:#22D3EE;animation:pulse 1.5s infinite">⟳ Loading data…</div>`:""}
-    </div>
+    ${lastUpdated?`<div style="text-align:right"><div style="font-size:9px;color:#2A3050;text-transform:uppercase;letter-spacing:1px">Last updated</div><div style="font-size:11px;color:#3A4560">${lastUpdated}</div></div>`:""}
   </div>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button id="btn-fetch" class="btn" style="background:${fetching||!token?"#1A2030":"#22D3EE"};color:#000;font-weight:800;padding:10px 24px;opacity:${fetching||!token?0.5:1};cursor:${fetching||!token?"not-allowed":"pointer"}">
-        ${fetching?"⟳ Fetching…":"⚡ FETCH LIVE DATA"}
-      </button>
-      <span style="font-size:10px;color:#444">7 brands · up to ~200 ads each · Belgium only</span>
-    </div>
-    ${fetching&&progress?`
-    <div style="margin-top:14px;padding:14px 16px;background:#0D1520;border:1px solid #22D3EE33;border-radius:10px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-        <span style="font-size:11px;color:#22D3EE;font-weight:700">⟳ FETCHING LIVE DATA</span>
-        <span style="font-size:11px;color:#555">${progress.step}/${progress.total}</span>
-      </div>
-      <div style="height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:8px">
-        <div style="width:${(progress.step/progress.total)*100}%;height:100%;background:linear-gradient(90deg,#A78BFA,#22D3EE);transition:width .4s"></div>
-      </div>
-      <div style="font-size:11px;color:#666">Brand: <span style="color:#e0e0e0">${progress.brand}</span></div>
-    </div>`:""}
-    ${fetchError?`
-    <div style="margin-top:14px;padding:12px 16px;background:#1A0D0D;border:1px solid #F8717133;border-radius:8px;font-size:12px;color:#F87171">
-      ${fetchError==="CORS"?"🔒 Still CORS? Make sure your terminal with proxy is still open, then retry.":fetchError.startsWith("TOKEN:")?"🔑 Token issue — generate a fresh token from developers.facebook.com/tools/accesstoken":fetchError==="RATE"?"⏱ Rate limit — wait 1-2 minutes and retry.":fetchError}
-    </div>`:""}
-  </div>`:""}
 
   <!-- FILTERS -->
   <div style="padding:14px 28px;background:#0C0F1A;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;flex-direction:column;gap:10px">
@@ -392,51 +276,40 @@ function render() {
     </div>
     <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
       <span style="font-size:10px;color:#3A4050;width:60px;flex-shrink:0;padding-top:6px">PERIOD</span>
-      <div style="flex:1;min-width:300px">
+      <div>
         <table style="border-collapse:separate;border-spacing:3px">
-          <thead>
-            <tr>
-              <td style="width:32px"></td>
-              ${YEARS.map(y => {
-                const allSel = MONTHS.every((_,mi) => selPeriods.includes(`${y}-${String(mi+1).padStart(2,"0")}`));
-                return `<td style="text-align:center;padding-bottom:4px">
-                  <button class="yr-col-toggle" data-year="${y}" title="${allSel?"Deselect":"Select"} all ${y}" style="background:${allSel?"rgba(167,139,250,0.2)":"rgba(255,255,255,0.04)"};border:1px solid ${allSel?"#A78BFA44":"rgba(255,255,255,0.08)"};color:${allSel?"#A78BFA":"#555"};border-radius:5px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;min-width:52px">${y}</button>
-                </td>`;
-              }).join("")}
-              <td style="padding-left:6px;vertical-align:middle">
-                <button id="btn-all-months" style="background:none;border:none;color:#3A4050;font-size:9px;cursor:pointer;font-family:inherit;display:block;white-space:nowrap">all</button>
-                <button id="btn-no-months" style="background:none;border:none;color:#3A4050;font-size:9px;cursor:pointer;font-family:inherit;display:block;white-space:nowrap">none</button>
-              </td>
-            </tr>
-          </thead>
+          <thead><tr>
+            <td style="width:32px"></td>
+            ${YEARS.map(y=>{
+              const allSel = MONTHS.every((_,mi)=>selPeriods.includes(`${y}-${String(mi+1).padStart(2,"0")}`));
+              return `<td style="text-align:center;padding-bottom:4px">
+                <button class="yr-col-toggle" data-year="${y}" style="background:${allSel?"rgba(167,139,250,0.2)":"rgba(255,255,255,0.04)"};border:1px solid ${allSel?"#A78BFA44":"rgba(255,255,255,0.08)"};color:${allSel?"#A78BFA":"#555"};border-radius:5px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;min-width:52px">${y}</button>
+              </td>`;
+            }).join("")}
+            <td style="padding-left:6px;vertical-align:middle">
+              <button id="btn-all-periods" style="background:none;border:none;color:#3A4050;font-size:9px;cursor:pointer;font-family:inherit;display:block">all</button>
+              <button id="btn-no-periods"  style="background:none;border:none;color:#3A4050;font-size:9px;cursor:pointer;font-family:inherit;display:block">none</button>
+            </td>
+          </tr></thead>
           <tbody>
-            ${MONTHS.map((m,mi) => `
-              <tr>
-                <td style="font-size:10px;color:#3A4050;padding-right:4px;text-align:right;white-space:nowrap">${m}</td>
-                ${YEARS.map(y => {
-                  const p = `${y}-${String(mi+1).padStart(2,"0")}`;
-                  const active = selPeriods.includes(p);
-                  return `<td><button class="period-cell" data-period="${p}" style="width:52px;background:${active?"rgba(167,139,250,0.18)":"rgba(255,255,255,0.03)"};border:1px solid ${active?"#A78BFA55":"rgba(255,255,255,0.06)"};color:${active?"#c4b5fd":"#3A4050"};border-radius:4px;padding:3px 0;font-size:10px;cursor:pointer;font-family:inherit;text-align:center;transition:all .15s">${active?"✓":"·"}</button></td>`;
-                }).join("")}
-                <td></td>
-              </tr>
-            `).join("")}
+            ${MONTHS.map((m,mi)=>`<tr>
+              <td style="font-size:10px;color:#3A4050;padding-right:4px;text-align:right">${m}</td>
+              ${YEARS.map(y=>{
+                const p = `${y}-${String(mi+1).padStart(2,"0")}`;
+                const active = selPeriods.includes(p);
+                return `<td><button class="period-cell" data-period="${p}" style="width:52px;background:${active?"rgba(167,139,250,0.18)":"rgba(255,255,255,0.03)"};border:1px solid ${active?"#A78BFA55":"rgba(255,255,255,0.06)"};color:${active?"#c4b5fd":"#3A4050"};border-radius:4px;padding:3px 0;font-size:10px;cursor:pointer;font-family:inherit;text-align:center">${active?"✓":"·"}</button></td>`;
+              }).join("")}
+              <td></td>
+            </tr>`).join("")}
           </tbody>
         </table>
       </div>
     </div>
   </div>
 
-  <!-- LOADING / ERROR STATE -->
-  ${dataLoading?`<div style="padding:40px;text-align:center;color:#22D3EE;font-size:13px;letter-spacing:1px">⟳ Loading ads data…</div>`:""}
-  ${dataError?`<div style="padding:20px 28px"><div style="background:#1A0D0D;border:1px solid #F8717133;border-radius:8px;padding:14px 18px;font-size:12px;color:#F87171">⚠ Could not load data.json — ${dataError}</div></div>`:""}
-  ${(!dataLoading&&!dataError)?`
-
   <!-- TABS -->
   <div style="display:flex;border-bottom:1px solid rgba(255,255,255,0.06);padding:0 28px;background:#0C0F1A">
-    ${TABS.map(t=>`
-      <button class="tab-btn" data-tab="${t}" style="background:transparent;border:none;border-bottom:2px solid ${tab===t?"#A78BFA":"transparent"};color:${tab===t?"#A78BFA":"#555"};padding:12px 18px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:1px;text-transform:uppercase">${t}</button>
-    `).join("")}
+    ${TABS.map(t=>`<button class="tab-btn" data-tab="${t}" style="background:transparent;border:none;border-bottom:2px solid ${tab===t?"#A78BFA":"transparent"};color:${tab===t?"#A78BFA":"#555"};padding:12px 18px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:1px;text-transform:uppercase">${t}</button>`).join("")}
   </div>
 
   <!-- CONTENT -->
@@ -467,8 +340,7 @@ function render() {
               </div>
               <span style="font-size:11px;color:#aaa;width:28px;text-align:right">${b.total}</span>
               <span style="font-size:10px;color:#444;width:64px;text-align:right">${fmtE(b.spend)}</span>
-            </div>
-          `).join("")}
+            </div>`).join("")}
         </div>
       </div>
       <div class="card">
@@ -476,12 +348,9 @@ function render() {
         <div style="display:flex;gap:24px;flex-wrap:wrap">
           ${platData.map(([p,c])=>`
             <div style="display:flex;gap:10px;align-items:center">
-              <div style="width:36px;height:36px;border-radius:8px;background:${p==="facebook"?"#1877F222":p==="instagram"?"#E1306C22":"#0084FF22"};display:flex;align-items:center;justify-content:center;font-size:14px">
-                ${p==="facebook"?"f":p==="instagram"?"📷":"💬"}
-              </div>
+              <div style="width:36px;height:36px;border-radius:8px;background:${p==="facebook"?"#1877F222":p==="instagram"?"#E1306C22":"#0084FF22"};display:flex;align-items:center;justify-content:center;font-size:14px">${p==="facebook"?"f":p==="instagram"?"📷":"💬"}</div>
               <div><div style="font-size:18px;font-weight:800">${c}</div><div style="font-size:10px;color:#555;text-transform:capitalize">${p}</div></div>
-            </div>
-          `).join("")}
+            </div>`).join("")}
         </div>
       </div>
     </div>`:""}
@@ -508,12 +377,7 @@ function render() {
               <div style="font-size:11px;color:#444;margin-top:2px">${b.total} ads · ${fmtE(b.spend)} est. min spend${b.reach>0?` · ${fmtN(b.reach)} DSA reach`:""}</div>
             </div>
             <div style="display:flex;gap:20px">
-              ${CAMPAIGN_TYPES.map(t=>`
-                <div style="text-align:center">
-                  <div style="font-size:20px;font-weight:800;color:${TYPE_COLORS[t]}">${b[t]}</div>
-                  <div style="font-size:9px;color:#444;text-transform:uppercase;letter-spacing:0.5px">${t}</div>
-                </div>
-              `).join("")}
+              ${CAMPAIGN_TYPES.map(t=>`<div style="text-align:center"><div style="font-size:20px;font-weight:800;color:${TYPE_COLORS[t]}">${b[t]}</div><div style="font-size:9px;color:#444;text-transform:uppercase">${t}</div></div>`).join("")}
             </div>
           </div>
           ${b.total>0?`
@@ -521,15 +385,9 @@ function render() {
             ${CAMPAIGN_TYPES.map(t=>`<div style="width:${(b[t]/b.total)*100}%;background:${TYPE_COLORS[t]};height:100%"></div>`).join("")}
           </div>
           <div style="display:flex;gap:14px;margin-top:8px">
-            ${CAMPAIGN_TYPES.map(t=>`
-              <div style="display:flex;gap:5px;align-items:center">
-                <div style="width:7px;height:7px;border-radius:2px;background:${TYPE_COLORS[t]}"></div>
-                <span style="font-size:10px;color:#444">${t}: ${Math.round((b[t]/Math.max(b.total,1))*100)}%</span>
-              </div>
-            `).join("")}
+            ${CAMPAIGN_TYPES.map(t=>`<div style="display:flex;gap:5px;align-items:center"><div style="width:7px;height:7px;border-radius:2px;background:${TYPE_COLORS[t]}"></div><span style="font-size:10px;color:#444">${t}: ${Math.round((b[t]/Math.max(b.total,1))*100)}%</span></div>`).join("")}
           </div>`:""}
-        </div>
-      `).join("")}
+        </div>`).join("")}
     </div>`:""}
 
     ${tab==="targeting"?`
@@ -544,26 +402,24 @@ function render() {
         </div>
         <div class="card" style="flex:1;min-width:250px">
           <div class="card-title">TOP INTEREST / PAYER SIGNALS</div>
-          ${intData.length>0?intData.map((([interest,count],i)=>`
+          ${intData.length>0?intData.map(([interest,count],i)=>`
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
               <span style="font-size:10px;color:#333;width:14px">${i+1}</span>
               <span style="font-size:11px;color:#ccc;width:100px;flex-shrink:0">${interest}</span>
-              <div style="flex:1;height:4px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden">
-                <div style="width:${(count/maxInt)*100}%;height:100%;background:#34D399;border-radius:2px"></div>
-              </div>
+              <div style="flex:1;height:4px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden"><div style="width:${(count/maxInt)*100}%;height:100%;background:#34D399;border-radius:2px"></div></div>
               <span style="font-size:11px;color:#666;width:24px;text-align:right">${count}</span>
-            </div>
-          `)).join(""):`<div style="font-size:12px;color:#333;margin-top:20px">No interest data — DSA limitation on live API</div>`}
+            </div>`).join(""):
+          `<div style="font-size:12px;color:#333;margin-top:20px">No interest data — DSA limitation on live API</div>`}
         </div>
       </div>
       <div class="card">
         <div class="card-title">LANGUAGE SPLIT (Belgium)</div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">
           ${["FR","NL","DE"].map(lang=>{
-            const c=filtered.filter(a=>a.languages.includes(lang)).length;
+            const c = filtered.filter(a=>a.languages.includes(lang)).length;
             return `<div style="display:flex;align-items:center;gap:12px">
               <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#A78BFA">${lang}</div>
-              <div><div style="font-size:22px;font-weight:800">${c}</div><div style="font-size:10px;color:#444">ads · ${filtered.length>0?Math.round(c/filtered.length*100):0}%</div></div>
+              <div><div style="font-size:22px;font-weight:800">${c}</div><div style="font-size:10px;color:#444">${filtered.length>0?Math.round(c/filtered.length*100):0}%</div></div>
             </div>`;
           }).join("")}
         </div>
@@ -578,78 +434,72 @@ function render() {
         <span style="font-size:11px;color:#555">${filtered.length} ads</span>
         <button id="btn-export" class="btn" style="background:rgba(52,211,153,0.1);border:1px solid #34D39944;color:#34D399;font-weight:700">⬇ Export CSV</button>
       </div>
-      <div class="grid-auto">
-        ${filtered.slice(0,60).map(adCard).join("")}
-      </div>
+      <div class="grid-auto">${filtered.slice(0,60).map(adCard).join("")}</div>
       ${filtered.length>60?`<div style="text-align:center;font-size:11px;color:#444;padding:10px">Showing 60 of ${filtered.length} · export CSV for full data</div>`:""}
     </div>`:""}
 
   </div>
 
-  `:""}}
-
   <!-- FOOTER -->
   <div style="padding:14px 28px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
-    <span style="font-size:10px;color:#2A3040">🔒 EU DSA-compliant · Belgium only · ${isLive?"Live Meta Ads Library":"Mock data"}</span>
+    <span style="font-size:10px;color:#2A3040">🔒 EU DSA-compliant · Belgium only · Live Meta Ads Library</span>
     <span style="font-size:10px;color:#2A3040">Proximus Marketing Intelligence · ${META_VERSION}</span>
   </div>`;
 
   document.getElementById("app").innerHTML = html;
 
-  // ── EVENTS ──────────────────────────────────────────────────────────────────
-
-  document.getElementById("btn-all-months")?.addEventListener("click", () => {
+  // ── EVENTS ────────────────────────────────────────────────────────────────
+  document.getElementById("btn-all-periods")?.addEventListener("click", () => {
     const all = YEARS.flatMap(y => MONTHS.map((_,mi) => `${y}-${String(mi+1).padStart(2,"0")}`));
-    setState({selPeriods: all});
+    setState({ selPeriods: all });
   });
-  document.getElementById("btn-no-months")?.addEventListener("click", () => setState({selPeriods:[]}));
+  document.getElementById("btn-no-periods")?.addEventListener("click", () => setState({ selPeriods: [] }));
+  document.getElementById("inp-search")?.addEventListener("input", e => setState({ search: e.target.value }));
   document.getElementById("btn-export")?.addEventListener("click", () => exportCSV(filtered));
-  document.getElementById("inp-search")?.addEventListener("input", e => setState({search:e.target.value}));
 
-
-
-
-  document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", e => setState({tab:e.target.dataset.tab})));
-  document.querySelectorAll(".filter-group").forEach(btn => btn.addEventListener("click", e => setState({group:e.target.dataset.group})));
-  document.querySelectorAll(".filter-type").forEach(btn => btn.addEventListener("click", e => {
-    const t=e.target.dataset.type;
-    setState({selTypes: state.selTypes.includes(t)?state.selTypes.filter(x=>x!==t):[...state.selTypes,t]});
+  document.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", e => setState({ tab: e.target.dataset.tab })));
+  document.querySelectorAll(".filter-group").forEach(b => b.addEventListener("click", e => setState({ group: e.target.dataset.group })));
+  document.querySelectorAll(".filter-type").forEach(b => b.addEventListener("click", e => {
+    const t = e.target.dataset.type;
+    setState({ selTypes: state.selTypes.includes(t) ? state.selTypes.filter(x=>x!==t) : [...state.selTypes, t] });
   }));
-  document.querySelectorAll(".period-cell").forEach(btn => btn.addEventListener("click", e => {
+  document.querySelectorAll(".brand-pill").forEach(b => b.addEventListener("click", e => {
+    const id = e.currentTarget.dataset.id;
+    setState({ selBrands: state.selBrands.includes(id) ? state.selBrands.filter(x=>x!==id) : [...state.selBrands, id] });
+  }));
+  document.querySelectorAll(".period-cell").forEach(b => b.addEventListener("click", e => {
     const p = e.currentTarget.dataset.period;
-    setState({selPeriods: state.selPeriods.includes(p) ? state.selPeriods.filter(x=>x!==p) : [...state.selPeriods, p]});
+    setState({ selPeriods: state.selPeriods.includes(p) ? state.selPeriods.filter(x=>x!==p) : [...state.selPeriods, p] });
   }));
-  document.querySelectorAll(".yr-col-toggle").forEach(btn => btn.addEventListener("click", e => {
+  document.querySelectorAll(".yr-col-toggle").forEach(b => b.addEventListener("click", e => {
     const y = parseInt(e.currentTarget.dataset.year);
-    const yearPeriods = MONTHS.map((_,mi) => `${y}-${String(mi+1).padStart(2,"0")}`);
-    const allActive = yearPeriods.every(p => state.selPeriods.includes(p));
-    setState({selPeriods: allActive
-      ? state.selPeriods.filter(p => !yearPeriods.includes(p))
-      : [...new Set([...state.selPeriods, ...yearPeriods])]
-    });
-  }));
-  document.querySelectorAll(".brand-pill").forEach(btn => btn.addEventListener("click", e => {
-    const id=e.currentTarget.dataset.id;
-    setState({selBrands: state.selBrands.includes(id)?state.selBrands.filter(x=>x!==id):[...state.selBrands,id]});
+    const yp = MONTHS.map((_,mi) => `${y}-${String(mi+1).padStart(2,"0")}`);
+    const allActive = yp.every(p => state.selPeriods.includes(p));
+    setState({ selPeriods: allActive ? state.selPeriods.filter(p=>!yp.includes(p)) : [...new Set([...state.selPeriods, ...yp])] });
   }));
 
-  // ── CHARTS ──────────────────────────────────────────────────────────────────
+  // ── CHARTS ────────────────────────────────────────────────────────────────
   requestAnimationFrame(() => {
-    if (tab==="overview") {
-      makePieChart("chart-pie", filtered);
-    }
-    if (tab==="timeline") {
-      makeMonthlyBarChart("chart-monthly", filtered);
-      makeLineChart("chart-line", filtered, actBrands);
-    }
-    if (tab==="targeting") {
-      makeAgeChart("chart-age", filtered);
-    }
+    if (tab === "overview")  makePieChart("chart-pie", filtered);
+    if (tab === "timeline") { makeMonthlyBarChart("chart-monthly", filtered); makeLineChart("chart-line", filtered, actBrands); }
+    if (tab === "targeting") makeAgeChart("chart-age", filtered);
   });
 }
 
-// ── BOOT ──────────────────────────────────────────────────────────────────────
-render();
+// ── LOAD DATA ────────────────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const res = await fetch("data.json?t=" + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status} — data.json not found. Run the GitHub Action first.`);
+    const json = await res.json();
+    const periods = [...new Set(json.ads.map(a => `${a.year}-${String(a.month+1).padStart(2,"0")}`))];
+    setState({ ads: json.ads, fetchedAt: json.fetched_at, selPeriods: periods });
+  } catch(e) {
+    setState({ dataError: e.message });
+  }
+}
+
+loadData();
 </script>
 </body>
 </html>
