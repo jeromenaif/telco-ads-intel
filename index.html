@@ -58,7 +58,7 @@ Chart.defaults.font.size = 11;
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let state = {
-  ads: [], fetchedAt: null, dataError: null,
+  ads: [], fetchedAt: null, dataError: null, loaded: false,
   selBrands: ALL_BRANDS.map(b => b.id),
   selTypes:  [...CAMPAIGN_TYPES],
   selPeriods: [],
@@ -209,12 +209,30 @@ function render() {
     return;
   }
 
-  // No data yet
-  if (!ads.length) {
+  // Still loading
+  if (!state.loaded) {
     document.getElementById("app").innerHTML = `
       <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px">
         <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
         <div style="color:#22D3EE;font-size:13px;letter-spacing:2px">LOADING ADS DATA…</div>
+      </div>`;
+    return;
+  }
+
+  // Loaded but empty — show diagnostic
+  if (!ads.length) {
+    document.getElementById("app").innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;padding:40px;text-align:center">
+        <div style="font-size:32px">📭</div>
+        <div style="color:#FBBF24;font-size:13px;letter-spacing:1px">DATA LOADED — BUT 0 ADS FOUND</div>
+        <div style="color:#444;font-size:11px;max-width:480px;line-height:1.8">
+          The GitHub Action ran successfully but returned no ads.<br>
+          This usually means the <strong style="color:#aaa">META_TOKEN</strong> secret has expired.<br><br>
+          <strong style="color:#aaa">Fix:</strong> Generate a new token at
+          <a href="https://developers.facebook.com/tools/accesstoken" target="_blank">developers.facebook.com/tools/accesstoken</a>,
+          then go to your repo → Settings → Secrets → Actions → update <code style="color:#22D3EE">META_TOKEN</code> → re-run the workflow.
+        </div>
+        ${fetchedAt ? `<div style="color:#2A3050;font-size:10px">data.json last updated: ${new Date(fetchedAt).toLocaleString("fr-BE")}</div>` : ""}
       </div>`;
     return;
   }
@@ -493,9 +511,9 @@ async function loadData() {
     if (!res.ok) throw new Error(`HTTP ${res.status} — data.json not found. Run the GitHub Action first.`);
     const json = await res.json();
     const periods = [...new Set(json.ads.map(a => `${a.year}-${String(a.month+1).padStart(2,"0")}`))];
-    setState({ ads: json.ads, fetchedAt: json.fetched_at, selPeriods: periods });
+    setState({ ads: json.ads, fetchedAt: json.fetched_at, selPeriods: periods, loaded: true });
   } catch(e) {
-    setState({ dataError: e.message });
+    setState({ dataError: e.message, loaded: true });
   }
 }
 
